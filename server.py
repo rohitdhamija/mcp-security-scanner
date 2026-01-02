@@ -89,7 +89,7 @@ async def validate_key(provider: str, api_key: str, azure_endpoint: str = None) 
 # This replaces the old mcp.run() for web-based hosting
 app = Starlette(
     routes=[
-        Mount("/", app=mcp.sse_app()),
+        Mount("/", app=mcp.http_app(transport="sse")),
     ]
 )
 
