@@ -5,7 +5,8 @@ import httpx
 from fastmcp import FastMCP, Context
 from starlette.applications import Starlette
 from starlette.routing import Mount
-
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 # 1. FIX: Initialize stateless_http=True globally to handle modern HTTP handshakes
 mcp = FastMCP("Security-Toolkit", stateless_http=True)
 
@@ -132,12 +133,35 @@ def proactive_security_audit(project_name: str):
     2. If keys are found, use 'validate_key' to check if they are active.
     3. Report findings with masked values only."""
 
-# 3. FIX: Simplified mount for Azure. FastMCP's http_app handles paths correctly.
+# --- DEPLOYMENT ---
+
+
+
+# ... (keep your existing patterns and tools) ...
+
+# 1. Create the MCP app
+mcp_app = mcp.http_app(stateless_http=True)
+
+# 2. Add a helper middleware to fix the "Not Acceptable" header issue
+class MCPHeaderMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        # Ensure SSE requests always have the correct stream header
+        if "/sse" in request.url.path:
+            response.headers["Content-Type"] = "text/event-stream"
+            response.headers["Cache-Control"] = "no-cache"
+            response.headers["Connection"] = "keep-alive"
+            response.headers["X-Accel-Buffering"] = "no"
+        return response
+
+# 3. Initialize Starlette with the Lifespan and Middleware
 app = Starlette(
+    lifespan=mcp_app.lifespan,
     routes=[
-        Mount("/", app=mcp.http_app()),
+        Mount("/", app=mcp_app),
     ]
 )
+app.add_middleware(MCPHeaderMiddleware)
 
 if __name__ == "__main__":
     import uvicorn
