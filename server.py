@@ -136,14 +136,17 @@ def proactive_security_audit(project_name: str):
     3. Report findings with masked values only. Use security://patterns as a reference."""
 
 # --- DEPLOYMENT ---
-# REVERTED: Use mcp.http_app(transport="sse") which is universally available in the SDK
+# Updated to support modern Streamable HTTP (required for GitHub Copilot)
+# and legacy SSE (for older clients).
 app = Starlette(
     routes=[
-        Mount("/", app=mcp.http_app(transport="sse")),
+        # stateless_http=True resolves the 405 error by handling modern POST handshakes
+        Mount("/", app=mcp.http_app(transport="sse", stateless_http=True)),
     ]
 )
 
 if __name__ == "__main__":
     import uvicorn
+    # Use 0.0.0.0 for Azure and grab the PORT from environment
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
