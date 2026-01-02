@@ -42,31 +42,38 @@ def perform_scan(text: str, filename: str = "input"):
             })
     return findings
 
+# --- RESOURCES ---
+@mcp.resource("security://patterns")
+def get_patterns() -> dict:
+    """Provides a list of all secret patterns currently supported by this toolkit."""
+    return PATTERNS
+
+# --- TOOLS ---
 @mcp.tool()
 async def smart_scan(target: str, ctx: Context) -> str:
     """
     Scans a local path OR a GitHub URL. 
     If a URL is given, the server will ask the AI to fetch the content automatically.
     """
-    # Check if target is a GitHub URL
     if "github.com" in target.lower():
-        ctx.info(f"GitHub URL detected. Requesting sampling to fetch content: {target}")
+        await ctx.info(f"GitHub URL detected. Requesting sampling: {target}")
         
-        # SAMPLING: The server asks the AI to use its own tools (like GitHub) to get the data
+        # FIXED: Removed 'prompt=' keyword. Passed string as positional argument.
         sample_result = await ctx.sample(
-            prompt=f"Please use your GitHub tools to fetch the full content of the file at {target}. I need the raw code to scan for security keys.",
+            f"Please use your GitHub tools to fetch the full content of the file at {target}. I need the raw code to scan for security keys.",
             max_tokens=3000
         )
         
-        content = sample_result.text
+        # Handle the result safely
+        content = sample_result.text if hasattr(sample_result, 'text') else str(sample_result)
         findings = perform_scan(content, target)
         return json.dumps({"source": "remote_github", "findings": findings}, indent=2)
 
-    # Standard local directory scan
     return scan_directory(target)
 
 @mcp.tool()
 def scan_directory(path: str) -> str:
+    """Recursively scans a local directory for secrets."""
     base_path = os.path.abspath(path)
     if not os.path.exists(base_path):
         return json.dumps({"error": f"Path not found: {base_path}"})
@@ -88,6 +95,7 @@ def scan_directory(path: str) -> str:
 
 @mcp.tool()
 async def validate_key(provider: str, api_key: str, azure_endpoint: str = None) -> str:
+    """Safely checks if a discovered key is active without compromising security."""
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
             if provider == "OpenAI":
@@ -104,13 +112,20 @@ async def validate_key(provider: str, api_key: str, azure_endpoint: str = None) 
         except Exception as e:
             return json.dumps({"error": str(e)})
 
+# --- PROMPT TEMPLATES ---
 @mcp.prompt()
-def audit_repo(repo_url: str):
-    """Shortcut: Fetch a repo and scan it for leaks."""
-    return f"Use your GitHub tools to explore {repo_url}. Read the main files and pass them to my Security-Toolkit 'smart_scan' tool to check for leaked keys."
+def proactive_security_audit(project_name: str):
+    """A strategic plan to audit a project's root for leaks."""
+    return f"""You are a Security Engineer. Please audit the current project '{project_name}':
+    1. Use 'scan_directory' on the root folder.
+    2. If keys are found, use 'validate_key' to check if they are active.
+    3. Report findings with masked values only. Use security://patterns as a reference."""
 
+# --- DEPLOYMENT ---
 app = Starlette(routes=[Mount("/", app=mcp.http_app(transport="sse"))])
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # Render uses the PORT environment variable
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
