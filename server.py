@@ -53,25 +53,23 @@ def get_patterns() -> dict:
 async def smart_scan(target: str, ctx: Context) -> str:
     """Scans a local path OR a GitHub URL via sampling."""
     if "github.com" in target.lower():
-        # LOGS MUST BE AWAITED
         await ctx.info(f"🚀 Detected GitHub URL. Initiating Sampling for: {target}")
         
         try:
-            # SAMPLING: Positional argument for the prompt string
+            # Use positional argument for the prompt string
             sample_result = await ctx.sample(
                 f"I need to perform a security audit on this file: {target}. "
                 "Please use your GitHub tools to get the RAW CODE and return it to me.",
                 max_tokens=3000
             )
             
-            # Robust extraction of text from result
             content = sample_result.text if hasattr(sample_result, 'text') else str(sample_result)
             
             if not content or len(content) < 10:
                 await ctx.error("❌ The agent returned empty content.")
                 return json.dumps({"error": "Failed to fetch remote content."})
 
-            await ctx.info(f"✅ Received {len(content)} characters. Scanning...")
+            await ctx.info(f"✅ Received content. Scanning...")
             findings = perform_scan(content, target)
             return json.dumps({"source": "remote_github", "findings": findings}, indent=2)
             
@@ -79,7 +77,6 @@ async def smart_scan(target: str, ctx: Context) -> str:
             await ctx.error(f"💥 Sampling failed: {str(e)}")
             return json.dumps({"error": str(e)})
 
-    # Fallback to local scan
     return await scan_directory(target, ctx)
 
 @mcp.tool()
@@ -139,8 +136,12 @@ def proactive_security_audit(project_name: str):
     3. Report findings with masked values only. Use security://patterns as a reference."""
 
 # --- DEPLOYMENT ---
-# Mounts the SSE and Message endpoints using the preferred 2.x method
-app = Starlette(routes=[Mount("/", app=mcp.sse_app())])
+# REVERTED: Use mcp.http_app(transport="sse") which is universally available in the SDK
+app = Starlette(
+    routes=[
+        Mount("/", app=mcp.http_app(transport="sse")),
+    ]
+)
 
 if __name__ == "__main__":
     import uvicorn
