@@ -5,7 +5,7 @@ endpoint = "https://rohitdhamija-aifoundry1.cognitiveservices.azure.com/"
 model_name = "o4-mini"
 deployment = "o4-mini"
 
-subscription_key = "03Ji8AAUY4zV9mpsT3XymJPAFTlbc9htma7xUbzzHmaS2D4gONkWJQQJ99BHACYeBjFXJ3w3AAAAACOG1iex"
+subscription_key = "03JpsT3XymJPAFTlbc9htma7xUbzzHmaS2D4gONkWJQQJ99BHACYeBjFXJ3w3AAAAACOG1iex"
 api_version = "2024-12-01-preview"
 
 client = AzureOpenAI(
