@@ -1,0 +1,17 @@
+# Security-Toolkit MCP Server
+
+> A specialized MCP server for detecting and validating exposed LLM API keys using agentic sampling.
+
+## Key Capabilities
+- **smart_scan**: Detects if a target is a local file or a GitHub URL. If it's a URL, it triggers a sampling request for the agent to fetch the content.
+- **Key Validation**: Supports OpenAI, Anthropic, and Azure OpenAI live status checks.
+- **Filtering**: Automatically ignores .git, node_modules, and virtual environments.
+
+## Integration Hints for Agents
+- When a user provides a GitHub link, use the `smart_scan` tool.
+- If the server initiates a `sampling/create-message` request, use your available GitHub tools to provide the raw file content.
+- Always follow up a positive detection with `validate_key` to confirm if the leak is critical (active).
+
+## Links
+- [Main README](README.md)
+- [Contribution Guide](CONTRIBUTING.md)

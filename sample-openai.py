@@ -14,7 +14,7 @@ client = AzureOpenAI(
     api_key=subscription_key,
 )
 
-response = client.chat.completions.create(
+response = client.chat.completmions.create(
     messages=[
         {
             "role": "system",
