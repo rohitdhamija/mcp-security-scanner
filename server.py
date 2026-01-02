@@ -6,8 +6,8 @@ from fastmcp import FastMCP, Context
 from starlette.applications import Starlette
 from starlette.routing import Mount
 
-# Initialize the server
-mcp = FastMCP("Security-Toolkit")
+# 1. FIX: Initialize stateless_http=True globally to handle modern HTTP handshakes
+mcp = FastMCP("Security-Toolkit", stateless_http=True)
 
 SCAN_EXTENSIONS = (".py", ".js", ".ts", ".json", ".env", ".yaml", ".yml", ".txt", ".ini", ".md")
 
@@ -42,13 +42,11 @@ def perform_scan(text: str, filename: str = "input"):
             })
     return findings
 
-# --- RESOURCES ---
 @mcp.resource("security://patterns")
 def get_patterns() -> dict:
     """Provides a list of all secret patterns currently supported."""
     return PATTERNS
 
-# --- TOOLS ---
 @mcp.tool()
 async def smart_scan(target: str, ctx: Context) -> str:
     """Scans a local path OR a GitHub URL via sampling."""
@@ -56,20 +54,21 @@ async def smart_scan(target: str, ctx: Context) -> str:
         await ctx.info(f"🚀 Detected GitHub URL. Initiating Sampling for: {target}")
         
         try:
-            # Use positional argument for the prompt string
+            # 2. FIX: Sampling expects a 'messages' list in the latest SDK
             sample_result = await ctx.sample(
-                f"I need to perform a security audit on this file: {target}. "
-                "Please use your GitHub tools to get the RAW CODE and return it to me.",
+                messages=[{
+                    "role": "user",
+                    "content": {"type": "text", "text": f"Please use your tools to get the RAW CODE from: {target}"}
+                }],
                 max_tokens=3000
             )
             
             content = sample_result.text if hasattr(sample_result, 'text') else str(sample_result)
             
             if not content or len(content) < 10:
-                await ctx.error("❌ The agent returned empty content.")
+                await ctx.error("❌ Empty content returned.")
                 return json.dumps({"error": "Failed to fetch remote content."})
 
-            await ctx.info(f"✅ Received content. Scanning...")
             findings = perform_scan(content, target)
             return json.dumps({"source": "remote_github", "findings": findings}, indent=2)
             
@@ -86,7 +85,6 @@ async def scan_directory(path: str, ctx: Context) -> str:
     if not os.path.exists(base_path):
         return json.dumps({"error": f"Path not found: {base_path}"})
     
-    await ctx.info(f"📁 Starting local scan in: {base_path}")
     all_findings = []
     for root, dirs, files in os.walk(base_path):
         dirs[:] = [d for d in dirs if d not in {".git", "node_modules", "venv"}]
@@ -126,27 +124,22 @@ async def validate_key(provider: str, api_key: str, azure_endpoint: str = None) 
         except Exception as e:
             return json.dumps({"error": str(e)})
 
-# --- PROMPT TEMPLATES ---
 @mcp.prompt()
 def proactive_security_audit(project_name: str):
     """A strategic plan to audit a project's root for leaks."""
-    return f"""You are a Security Engineer. Please audit the current project '{project_name}':
+    return f"""You are a Security Engineer. Please audit the project '{project_name}':
     1. Use 'scan_directory' on the root folder.
     2. If keys are found, use 'validate_key' to check if they are active.
-    3. Report findings with masked values only. Use security://patterns as a reference."""
+    3. Report findings with masked values only."""
 
-# --- DEPLOYMENT ---
-# Updated to support modern Streamable HTTP (required for GitHub Copilot)
-# and legacy SSE (for older clients).
+# 3. FIX: Simplified mount for Azure. FastMCP's http_app handles paths correctly.
 app = Starlette(
     routes=[
-        # stateless_http=True resolves the 405 error by handling modern POST handshakes
-        Mount("/", app=mcp.http_app(transport="sse", stateless_http=True)),
+        Mount("/", app=mcp.http_app()),
     ]
 )
 
 if __name__ == "__main__":
     import uvicorn
-    # Use 0.0.0.0 for Azure and grab the PORT from environment
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
